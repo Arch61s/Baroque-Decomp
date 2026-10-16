@@ -1,0 +1,19 @@
+Third-party components shipped with Baroque.exe
+================================================
+
+raylib (statically linked) - zlib/libpng license
+  Copyright (c) 2013-2024 Ramon Santamaria (@raysan5). Full text: raylib_LICENSE.txt
+  raylib includes GLFW (zlib/libpng license) and other single-file libraries under permissive licenses.
+
+FFmpeg (avcodec-61.dll, avutil-59.dll, swscale-8.dll, swresample-5.dll) - GNU LGPL version 2.1 or later
+  Used unmodified as separate DLLs (dynamic linking) to decode the game's MPEG-2 movies. You may replace these
+  DLLs with your own build of the same FFmpeg major versions. Source code and the license text:
+  https://ffmpeg.org/ (LGPL 2.1: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html)
+
+Libraries loaded by the FFmpeg DLLs:
+  libwebp.dll, libwebpmux.dll, libsharpyuv.dll - BSD 3-clause (Copyright Google Inc.)
+  jxl.dll, jxl_cms.dll, jxl_threads.dll        - BSD 3-clause (Copyright the JPEG XL Project Authors)
+  brotlicommon.dll, brotlidec.dll, brotlienc.dll - MIT (Copyright Google Inc.)
+  zlib1.dll                                    - zlib license (Copyright Jean-loup Gailly and Mark Adler)
+
+No part of the original game (program, data, movies, sound) is included; it is read from the player's own disc image.

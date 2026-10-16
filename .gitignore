@@ -1,0 +1,32 @@
+# Whitelist: nothing is tracked unless it is listed below. Game data (disc images, extracted assets, the ELF,
+# decompiler output, captures) must never be committed.
+/*
+!/.gitignore
+!/README.md
+!/LICENSE
+!/native/
+!/tools/
+!/docs/
+
+# tools: scripts and the packaging texts only (sweep logs / dumps stay local)
+/tools/**
+!/tools/*/
+!/tools/*.py
+!/tools/*.ps1
+!/tools/*.java
+!/tools/*.json
+!/tools/*/*.py
+!/tools/*/*.cpp
+!/tools/package/*.txt
+__pycache__/
+
+# derived from the game itself (made locally from your own disc; see README)
+/native/game/ui/strings_en.inc
+/native/platform/baroque.ico
+
+# disc images anywhere, just in case
+*.iso
+*.bin
+*.cue
+*.7z
+*.zip
