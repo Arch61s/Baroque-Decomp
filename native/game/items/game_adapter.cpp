@@ -8,6 +8,7 @@
 #include "game/game_world.hpp"
 #include "game/items/item_links.hpp"
 #include "game/items/item_screen.hpp"
+#include "platform/platform.hpp"
 #include <cmath>
 #include "game/sound_stub.hpp"
 #include "game/talk/talk_manager.hpp"
@@ -240,7 +241,7 @@ void GameAdapter::destroyItem(Item* item) {
     items_.erase(own);
     if (itemEntityHooks() != nullptr) {
         itemEntityHooks()->destroyed(*item);
-        graveyard_.push_back(std::move(dead));          // released once no task-list record references it
+        graveyard_.push_back({std::move(dead), floorEpoch_});   // released by purgeItems (see floorExit)
     }
 }
 // FUN_001b7570: vt+8(item, -1) = FUN_00132200 -> FUN_001d39b0
@@ -259,8 +260,17 @@ void GameAdapter::removeFromWorld(Item* item) {
     item->taskFlags |= 0x30000000u;
     if (itemEntityHooks() != nullptr) itemEntityHooks()->taskFlagsChanged(*item);
 }
+bool GameAdapter::owns(const Item* item) const {
+    return std::any_of(items_.begin(), items_.end(), [&](const std::unique_ptr<Item>& u) { return u.get() == item; });
+}
 // orig FUN_001d3a30 (work/decompiled/001d3a30.c)
 void GameAdapter::itemEnterWorld(Item& item) {
+    // PORT: a destroyed item (FUN_001d39b0 ran, storage kept until the floor is left) never re-enters the world; the
+    // original would link freed memory here
+    if ((item.taskFlags & 0x20000000u) != 0 && !owns(&item)) {
+        platform::log("item: destroyed item " + std::to_string(item.id) + " refused re-entering the world");
+        return;
+    }
     if ((item.taskFlags & 1u) == 0 || (item.taskFlags & 0x10000000u) != 0) {
         // iRam0050b13c++; FUN_002073e0(item, 0x50b134, 0x50b138): appended unless still listed (0x10000000), then
         // flags & 0xcfffffff | 1
@@ -326,7 +336,7 @@ void GameAdapter::purgeItems() {
             it->taskFlags = f & 0xeffffffeu;             // FUN_00207380: unlinked, the item lives on
         }
     }
-    std::erase_if(graveyard_, [&](const std::unique_ptr<Item>& u) { return !referenced(u.get()); });
+    std::erase_if(graveyard_, [&](const DeadItem& d) { return d.epoch != floorEpoch_ && !referenced(d.item.get()); });
 }
 void GameAdapter::removeCharacter(CharacterAccess* c) {
     if (c == nullptr) return;

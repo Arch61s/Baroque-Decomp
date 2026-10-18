@@ -16,6 +16,7 @@
 //          e.g. "Option..", instead of "BootMC.."), --event N (event E%02d via FUN_001d1d30 on the first Game tick),
 //          --run-end TICK (the HP-0 run end FUN_0011ce60 on that tick: post-run menu, save, rebirth),
 //          --kill TICK (player HP set to 0 on that tick: the real death state DD01 -> FUN_001cd9d0 -> FUN_001cdcd0),
+//          --status MASK TICK (status bits MASK inflicted on the player on that tick through FUN_00138660, e.g. 0x10 Lust),
 //          --warp-to X Y Z TICK (player moved to X Y Z on that tick, e.g. next to an exit object).
 //          PORT test options: --stick LX LY FROM TO (left stick raw values on ticks FROM..TO-1, repeatable),
 //          --hold MASK FROM TO (pad bits held on ticks FROM..TO-1, repeatable; e.g. 0x800 = hold-to-skip test),
@@ -51,6 +52,7 @@
 #include "audio/sound_system.hpp"
 #include "game/character/ai.hpp"
 #include "game/character/character.hpp"
+#include "game/character/combat.hpp"
 #include "game/effects/effects.hpp"
 #include "game/effects/effects_gl.hpp"
 #include "game/engine.hpp"
@@ -413,6 +415,7 @@ int main(int argc, char** argv) {
     int devEvent = -1;                       // PORT: --event N (FUN_001d1d30(N) once the Game scene runs)
     long devRunEnd = -1;                     // PORT: --run-end TICK (the HP-0 run end FUN_0011ce60 on that tick)
     long devKill = -1;                       // PORT: --kill TICK (player HP = 0 on that tick -> the real death state)
+    struct DevStatus { uint32_t mask; long tick; } devStatus{0, -1};   // PORT: --status MASK TICK (FUN_00138660 on the player)
     struct DevWarp { float x, y, z; long tick; } devWarp{0.0f, 0.0f, 0.0f, -1};   // PORT: --warp-to X Y Z TICK
     bool devKeepHp = false;                  // PORT: --keep-hp (test: HP refilled, invincible bit 0x10000 held)
     int devHpMax = -1;                       // PORT: --hp-max N (test: base max HP and HP = N once the player exists)
@@ -522,6 +525,8 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--event") == 0 && i + 1 < argc) devEvent = std::atoi(argv[i + 1]);   // PORT: dev option
         if (std::strcmp(argv[i], "--run-end") == 0 && i + 1 < argc) devRunEnd = std::atol(argv[i + 1]); // PORT: dev option
         if (std::strcmp(argv[i], "--kill") == 0 && i + 1 < argc) devKill = std::atol(argv[i + 1]);      // PORT: dev option
+        if (std::strcmp(argv[i], "--status") == 0 && i + 2 < argc)                                       // PORT: dev option
+            devStatus = {static_cast<uint32_t>(std::strtoul(argv[i + 1], nullptr, 0)), std::atol(argv[i + 2])};
         if (std::strcmp(argv[i], "--warp-to") == 0 && i + 4 < argc)                                      // PORT: dev option
             devWarp = {float(std::atof(argv[i + 1])), float(std::atof(argv[i + 2])), float(std::atof(argv[i + 3])), std::atol(argv[i + 4])};
         if (std::strcmp(argv[i], "--keep-hp") == 0) devKeepHp = true;                                   // PORT: test option
@@ -958,6 +963,10 @@ int main(int argc, char** argv) {
             if (devKill >= 0 && long(game::engine().tickCount) == devKill && game::gameActive()) {   // PORT: --kill
                 if (game::Chr* p = game::characters().player()) p->status.block.hp = 0;   // FUN_00129c60 -> FUN_0012a5e0
                 devKill = -1;
+            }
+            if (devStatus.tick >= 0 && long(game::engine().tickCount) == devStatus.tick && game::gameActive()) {   // PORT: --status
+                if (game::Chr* p = game::characters().player()) game::inflictStatus(p->status, devStatus.mask);
+                devStatus.tick = -1;
             }
             if (std::getenv("BAROQUE_TRACE_PLAYER") != nullptr && game::gameActive()) {   // PORT: debug trace
                 if (const game::Chr* p = game::characters().player()) {

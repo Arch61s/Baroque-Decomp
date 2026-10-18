@@ -100,9 +100,13 @@ bool lockMarkerAlloc() { return true; }
 void lockMarkerFree() {}
 bool aimMarkerAlloc() { return true; }
 void aimMarkerFree() {}
-// UNVERIFIED: subsystem not translated yet (FUN_0013a150 trajectory preview: item speed FUN_001d5850, physics probe
-// FUN_00141950, 60 sprite points 0x50b240 / colours 0x50b510).
-void aimTrajectory(const void*, const Vec3f&, const Vec3f&, const Vec3f&) {}
+// FUN_0013a150 trajectory preview (items module aimArc: item speed FUN_001d5850, physics probe FUN_00141950) into the
+// sprite arrays 0x50b240 / 0x50b510 (PORT: kept in PlayerControl). Unwired (PlayerControlCheck): nothing is written.
+void aimTrajectory(PlayerControl& ctl, const void* item, const Vec3f& start, const Vec3f& dir, const Vec3f& side) {
+    if (!svc().aimTrajectory || item == nullptr) return;   // PORT guard: the selected slot always holds an item
+    svc().aimTrajectory(item, start, dir, side, ctl.aimArcVerts, ctl.aimArcColours);
+    ctl.aimArcValid = true;
+}
 
 }  // namespace hooks
 
@@ -246,12 +250,16 @@ void playerAimMarkerFree(PlayerControl& ctl) {
     if (ctl.aimMarker) {
         hooks::aimMarkerFree();
         ctl.aimMarker = false;
+        ctl.aimArcValid = false;   // PORT: the sprite (and its draw) is gone
     }
 }
 
 // orig FUN_00139f80 (work/decompiled/00139f80.c)
 void playerAimMarkerCreate(PlayerControl& ctl) {
-    if (!ctl.aimMarker) ctl.aimMarker = hooks::aimMarkerAlloc();
+    if (!ctl.aimMarker) {
+        ctl.aimMarker = hooks::aimMarkerAlloc();
+        ctl.aimArcValid = false;   // PORT: filled by FUN_0013a150 later in the same FUN_0013c790 tick
+    }
 }
 
 // orig FUN_00134820 (work/decompiled/00134820.c; branch structure checked in the disassembly at 0x134820)
@@ -423,7 +431,7 @@ void aimPreview(PlayerControl& ctl, Chr& chr, const void* item) {
     ctl.aimDir = mulVec3(xf.fwd, m);                                                       // FUN_003a0330
     const float k = std::bit_cast<float>(0x40400000u);   // DAT_0044b1f0 = 3.0
     const Vec3f side{xf.right[0] * k, xf.right[1] * k, xf.right[2] * k};
-    hooks::aimTrajectory(item, start, ctl.aimDir, side);  // FUN_0013a150
+    hooks::aimTrajectory(ctl, item, start, ctl.aimDir, side);  // FUN_0013a150
     ActorAnim& anim = chr.model.anim;
     if (ctl.aimPhase == 1) {
         const float v = ctl.aimSpeed - 0.05f;   // 0x3d4ccccd

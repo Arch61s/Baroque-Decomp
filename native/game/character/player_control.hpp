@@ -12,6 +12,10 @@
 #include <cstdint>
 #include <functional>
 
+namespace baroque::alchemy {
+struct Mat4;   // alchemy/scene_render.hpp
+}
+
 namespace baroque::game {
 
 // orig FUN_0013c4e0 (attack start). Returns 1 when an attack action was started.
@@ -58,6 +62,9 @@ struct PlayerControlServices {
     std::function<void(bool next)> itemSlotStep;        // FUN_001575f0 / FUN_00157410
     std::function<int(const Chr&, int)> aiQuery;        // FUN_001f1730
     std::function<bool(float fwd[3], float right[3])> eventCameraAxes;   // 0x53c6e8 && 0x53c720: FUN_001a1d90 / 1d80
+    // FUN_0013a150(item, &start, aimDir, &side): fills the 60 sprite vertices 0x50b240 / colours 0x50b510
+    std::function<void(const void* item, const Vec3f& start, const Vec3f& dir, const Vec3f& side, float verts[60][3],
+                       uint32_t colours[60])> aimTrajectory;
 };
 PlayerControlServices& playerControlServices();
 
@@ -111,8 +118,14 @@ bool lockMarkerAlloc();             // FUN_00107170/FUN_00107130/FUN_00113c60/FU
 void lockMarkerFree();              // unlink from 0x4e6a04/0x4e6a0c/0x4e6a14 lists + FUN_001053a0
 bool aimMarkerAlloc();              // FUN_00139f80 chain + FUN_001051d0(sprite, 0x50b240, 0, 0x50b510, 0x3c, 0)
 void aimMarkerFree();               // FUN_0013a060 unlink + FUN_001053a0
-void aimTrajectory(const void* item, const Vec3f& start, const Vec3f& dir, const Vec3f& side);   // FUN_0013a150
+// FUN_0013a150: writes the sprite arrays (PORT: ctl.aimArcVerts / aimArcColours) and marks them valid
+void aimTrajectory(PlayerControl& ctl, const void* item, const Vec3f& start, const Vec3f& dir, const Vec3f& side);
 
 }  // namespace hooks
+
+// orig FUN_00105030 for the throw-trajectory sprite 0x50b600 (3-D sprite layer 0x4e6a00, FUN_00104ff0 stream):
+// one untextured triangle strip of ctl.aimArcVerts with the camera view / projection of the scene. Defined in
+// game/character/aim_arc_draw.cpp (Baroque-Native only); called by gameRender3D after the 3-D scene.
+void playerAimArcDraw(const alchemy::Mat4& view, const alchemy::Mat4& proj);
 
 }  // namespace baroque::game

@@ -70,6 +70,9 @@ struct PlayerControl {
     uint32_t confDpad = 0;    // 0x50b6e0
     // Other controller statics
     bool aimMarker = false;   // 0x50b600 throw-trajectory sprite pointer non-null (FUN_0013a140 = "aiming")
+    float aimArcVerts[60][3] = {};   // 0x50b240 throw-trajectory sprite vertices (world space, FUN_0013a150)
+    uint32_t aimArcColours[60] = {}; // 0x50b510 per-vertex colours (FUN_001051d0 a3, flag bit 0 clear)
+    bool aimArcValid = false;        // PORT: the two arrays hold a FUN_0013a150 result of the current sprite
     int holeTicks = 0;        // 0x50b678 floor-hole edge counter
     int holeAssistTicks = 0;  // PORT: walkway-end assist counter
     float markerBob = 0.0f;   // 0x50b6b0 lock-on marker bob offset

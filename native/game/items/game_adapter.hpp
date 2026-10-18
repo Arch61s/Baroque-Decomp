@@ -158,8 +158,14 @@ public:
     void dropFarthestItem();                            // orig FUN_00128340
     // The task walk's part for items (FUN_00207380 unlink, FUN_00101200 delete): items flagged 0x20000000 (or whose
     // record vanished while linked, FUN_0012bfd0 floor exit) are destroyed, unlinked ones lose bits 0 / 0x10000000;
-    // freed storage is released once no record references it. Called once per engine tick (hudGameTick).
+    // freed storage is released once no record references it and its floor has been left. Called once per engine tick
+    // (hudGameTick).
     void purgeItems();
+    // PORT: floor exit (FUN_0011bad0). Destroyed items stay allocated (flagged 0x30000000, so every tick / walk skips
+    // them) until the floor they died on has been left: a stale Item* still held by a holder outside the task list
+    // (thrower, carrier, item task) then reads a dead item instead of freed memory (GitHub issue #2, crash in
+    // itemEntityTick on floor 105).
+    void floorExit() { ++floorEpoch_; }
     void freeAllItems();
     // Traps created while no ItemTaskHooks are installed, applied by runPendingTraps (see game_adapter.cpp).
     void runPendingTraps(bool walkRan);
@@ -167,7 +173,13 @@ private:
     std::vector<std::unique_ptr<TrapObject>> pendingTraps_;
     void destroyItem(Item* item);                       // FUN_001d39b0 (dtor) on an owned item
     std::vector<std::unique_ptr<Item>> items_;
-    std::vector<std::unique_ptr<Item>> graveyard_;      // destroyed, released when unreferenced
+    struct DeadItem {
+        std::unique_ptr<Item> item;
+        uint32_t epoch = 0;                             // floorEpoch_ when it was destroyed
+    };
+    std::vector<DeadItem> graveyard_;                   // destroyed, released when unreferenced on a later floor
+    uint32_t floorEpoch_ = 0;
+    bool owns(const Item* item) const;
     std::vector<Item*> itemList_;                       // 0x50a830
     int modelCount_ = 0;                                // iRam0053d8f0
 };

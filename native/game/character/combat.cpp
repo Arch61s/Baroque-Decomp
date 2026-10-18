@@ -1043,7 +1043,17 @@ void statusVisual(StatusObj& s, int i, bool on) {
     }
 }
 
-// orig FUN_00138ac0 (messages FUN_001373b0/FUN_00137cf0/FUN_001378a0 not translated: presentation)
+// orig FUN_00138ac0 / FUN_00138970 per cleared status: player flag, timer (+ Stomachache ATK / DEF), visual, recovery
+// line (the player with HP > 0)
+static void statusCleared(StatusObj& s, int i) {
+    const bool player = isPlayer(s.owner);
+    if (player) statusClearPlayerFlag(i);              // FUN_001373b0
+    statusClearTimer(s, i);                            // FUN_00137cf0
+    statusVisual(s, i, false);                         // FUN_00137f40
+    statusRecoverMessage(i, player && 0 < s.block.hp);  // FUN_001378a0
+}
+
+// orig FUN_00138ac0
 uint32_t cureAllStatus(StatusObj& s) {
     uint32_t cured = 0;
     for (int i = 0; i < 0x13; ++i) {
@@ -1051,14 +1061,14 @@ uint32_t cureAllStatus(StatusObj& s) {
         if ((s.block.statusMask & bit) != 0) {
             s.block.statusMask &= ~bit;
             cured |= bit;
-            statusVisual(s, i, false);   // FUN_00137f40
+            statusCleared(s, i);
         }
     }
     if (cured != 0 && s.block.hp != 0 && s.owner != nullptr) se3d(0x8b, s.owner->xf.m.pos);
     return cured;
 }
 
-// orig FUN_00138970 (messages FUN_001373b0 (player), FUN_00137cf0, FUN_001378a0 not translated: presentation)
+// orig FUN_00138970
 uint32_t statusExpire(StatusObj& s, uint32_t mask) {
     uint32_t cleared = 0;
     for (int i = 0; i < 0x13; ++i) {
@@ -1066,7 +1076,7 @@ uint32_t statusExpire(StatusObj& s, uint32_t mask) {
         if ((mask & bit) != 0 && (s.block.statusMask & bit) != 0) {
             s.block.statusMask &= ~bit;
             cleared |= bit;
-            statusVisual(s, i, false);   // FUN_00137f40
+            statusCleared(s, i);
         }
     }
     if (cleared != 0 && s.block.hp != 0 && s.owner != nullptr) se3d(0x8b, s.owner->xf.m.pos);

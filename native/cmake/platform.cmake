@@ -37,6 +37,8 @@ endif()
 # player EXE that tools/package_release.ps1 ships). main() is the entry point of both (mainCRTStartup).
 if(MSVC)
   target_link_options(Baroque-Native PRIVATE "/ENTRY:mainCRTStartup")
+  # Baroque-Native.map beside the EXE (not shipped): maps the "Baroque.exe+0x..." crash lines of a player's baroque.log
+  target_link_options(Baroque-Native PRIVATE "/MAP")
   get_filename_component(_baroque_linker_dir "${CMAKE_LINKER}" DIRECTORY)
   find_program(BAROQUE_EDITBIN editbin HINTS "${_baroque_linker_dir}" NO_DEFAULT_PATH)
   find_program(BAROQUE_EDITBIN editbin)

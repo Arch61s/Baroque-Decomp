@@ -67,6 +67,21 @@ bool install() {
     s.startFloorEvent = [](int n) { eventTrigger(n); };                // FUN_001d1d30
     s.eventCameraAxes = [](float fwd[3], float right[3]) { return talkCameraAxes(fwd, right); };   // FUN_001a1d90 / 1d80
     s.aiQuery = [](const Chr& c, int key) { return static_cast<int>(aiVar(const_cast<Ai&>(c.ai), static_cast<uint32_t>(key))); };
+    // FUN_0013a150 (items module aimArc). Its statics DAT_0044b118 (strip phase) / DAT_0044b110 (angle) are game-wide
+    // data words, both 1.0f (0x3f800000) in the ELF and never reset.
+    s.aimTrajectory = [](const void* item, const Vec3f& start, const Vec3f& dir, const Vec3f& side, float verts[60][3],
+                         uint32_t colours[60]) {
+        static float phase = 1.0f;   // DAT_0044b118
+        static float angle = 1.0f;   // DAT_0044b110
+        Vec3 v[60];
+        aimArc(*static_cast<Item*>(const_cast<void*>(item)), Vec3{start[0], start[1], start[2]},
+               Vec3{dir[0], dir[1], dir[2]}, Vec3{side[0], side[1], side[2]}, itemSystem(), v, colours, phase, angle);
+        for (int i = 0; i < 60; ++i) {
+            verts[i][0] = v[i].x;
+            verts[i][1] = v[i].y;
+            verts[i][2] = v[i].z;
+        }
+    };
 
     // character core: FUN_001d7d10(0x53d910) for the reaction / death action suffixes (FUN_0013a4b0)
     CombatHooks& ch = combatHooks();

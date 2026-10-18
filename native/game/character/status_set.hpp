@@ -11,6 +11,9 @@ struct StatusObj;
 uint32_t statusSet(StatusObj& s, uint32_t mask);
 void statusSetPlayerFlag(int i);                       // orig FUN_00137220 (player only)
 void statusSetMessage(int i, bool isPlayer);           // orig FUN_00137540
+void statusClearPlayerFlag(int i);                     // orig FUN_001373b0 (player only)
+void statusClearTimer(StatusObj& s, int i);            // orig FUN_00137cf0
+void statusRecoverMessage(int i, bool playerAlive);    // orig FUN_001378a0
 void statusVisualOn(StatusObj& s, int i);              // orig FUN_00137d40
 
 // Defined in combat.cpp (status module):

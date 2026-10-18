@@ -3,6 +3,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <exception>
 #include <mutex>
@@ -153,11 +154,52 @@ void showError(const std::string& title, const std::string& message, bool dialog
 void installCrashLogging() {
 #ifdef _WIN32
     SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* ep) -> LONG {
-        char line[160];
-        std::snprintf(line, sizeof line, "crash: unhandled exception 0x%08lx at %p",
-                      ep && ep->ExceptionRecord ? ep->ExceptionRecord->ExceptionCode : 0ul,
-                      ep && ep->ExceptionRecord ? ep->ExceptionRecord->ExceptionAddress : nullptr);
+        // "module+offset" survives ASLR, so a player's log maps onto the build's .map / .pdb
+        auto where = [](DWORD64 pc, char* out, size_t n) {
+            HMODULE mod = nullptr;
+            char path[MAX_PATH] = "?";
+            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                   reinterpret_cast<LPCSTR>(pc), &mod) && mod != nullptr) {
+                GetModuleFileNameA(mod, path, MAX_PATH);
+                const char* base = std::strrchr(path, '\\');
+                std::snprintf(out, n, "%s+0x%llx", base ? base + 1 : path,
+                              static_cast<unsigned long long>(pc - reinterpret_cast<DWORD64>(mod)));
+            } else {
+                std::snprintf(out, n, "0x%llx", static_cast<unsigned long long>(pc));
+            }
+        };
+        char line[256], at[160];
+        const EXCEPTION_RECORD* er = ep ? ep->ExceptionRecord : nullptr;
+        where(er ? reinterpret_cast<DWORD64>(er->ExceptionAddress) : 0, at, sizeof at);
+        std::snprintf(line, sizeof line, "crash: unhandled exception 0x%08lx at %p (%s)", er ? er->ExceptionCode : 0ul,
+                      er ? er->ExceptionAddress : nullptr, at);
         log(line);
+        if (er != nullptr && er->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && er->NumberParameters >= 2) {
+            std::snprintf(line, sizeof line, "crash: %s address 0x%llx",
+                          er->ExceptionInformation[0] == 0 ? "read" : er->ExceptionInformation[0] == 1 ? "write" : "execute",
+                          static_cast<unsigned long long>(er->ExceptionInformation[1]));
+            log(line);
+        }
+#if defined(_M_X64)
+        if (ep != nullptr && ep->ContextRecord != nullptr) {   // call stack from the faulting context (x64 unwind data)
+            CONTEXT ctx = *ep->ContextRecord;
+            for (int frame = 0; frame < 24 && ctx.Rip != 0; ++frame) {
+                where(ctx.Rip, at, sizeof at);
+                std::snprintf(line, sizeof line, "crash:   #%02d %s", frame, at);
+                log(line);
+                DWORD64 imageBase = 0;
+                PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(ctx.Rip, &imageBase, nullptr);
+                if (fn == nullptr) {   // leaf function: the return address is on top of the stack
+                    ctx.Rip = *reinterpret_cast<DWORD64*>(ctx.Rsp);
+                    ctx.Rsp += 8;
+                    continue;
+                }
+                void* handlerData = nullptr;
+                DWORD64 establisher = 0;
+                RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, ctx.Rip, fn, &ctx, &handlerData, &establisher, nullptr);
+            }
+        }
+#endif
         return EXCEPTION_CONTINUE_SEARCH;
     });
 #endif

@@ -14,6 +14,7 @@ set(BAROQUE_GAMEPLAY_SOURCES
   "${CMAKE_CURRENT_SOURCE_DIR}/game/floor_world.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/game/character/player_control.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/game/character/player_control_wiring.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/game/character/aim_arc_draw.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/game/character/act_effects.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/game/character/player_event.cpp")
 target_sources(Baroque-Native PRIVATE ${BAROQUE_GAMEPLAY_SOURCES})

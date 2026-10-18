@@ -110,6 +110,7 @@ struct GameRuntime {
     bool rendererReady = false;
     float fogNear = 755.0f, fogFar = 1500.0f;   // FUN_0011b810: fog attr +0x10 / +0x14
     float clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};   // 0x4e7914..0x4e7920 (renderer +0x34): clear and fog colour
+    bool lustVisual = false;                 // iRam004e7aa8: the player's Lust view (FUN_001075a0)
     int emitterHandles[0x20];                // floor context 0x50a350 +0x24: RDT emitter effect handles (-1 = none)
     int emitterRoom = -1;                    // floor context +0xa4: room whose emitters run
     bool active = false;                     // between Init and Exit
@@ -430,6 +431,64 @@ void renderTickPass(GameRuntime& r) {
     // (main light = -speaker forward), also on the push tick that still shows the gameplay camera
     cs.lightFollowsCamera = r.camWorld.lightFollowsCamera && talkManager().camera == nullptr;
     present::presenter().capture(cs, engine().tickCount);
+    // FUN_001075a0 tail (after FUN_001092a0): the player's Lust (status +0x3c bit 0x10) switches the Lust view
+    // iRam004e7aa8, each change with a 5-frame capture transition FUN_00177cc0(0, 0x51b620, 5). Without a player the
+    // head of the pass clears it (host clear colour (0, 0, 0, 1): the port clears from r.clearColor every frame).
+    if (const Chr* pl = characters().player()) {
+        const bool on = (pl->status.block.statusMask & 0x10u) != 0;
+        if (on != r.lustVisual) {
+            r.lustVisual = on;
+            eventManager().requestTransition(0.0f, 5);
+        }
+    } else {
+        r.lustVisual = false;
+    }
+}
+
+// The Lust view's stand-in model: scene "igSceneInfo" (0x42c908) of "DATA/CHR/C29/C29A.IGB" (0x42c8f0), found with
+// FUN_00325420 among the loaded files (OBJ_ITEM pack). PORT: loaded once on first use.
+const ChrModel* lustModel() {
+    static ChrModel m;
+    static bool tried = false;
+    if (!tried) {
+        tried = true;
+        ChrModelPart part;
+        if (chrLoadPart(part, characters().assetRoot / "DATA/CHR/C29/C29A.IGB", "")) {
+            m.parts.push_back(std::move(part));
+            m.lit = true;                     // under the actor's group: lit like the actor
+            m.flags2c |= 0x80000000u;
+        } else {
+            platform::log("lust: DATA/CHR/C29/C29A.IGB not loaded");
+        }
+    }
+    return m.parts.empty() ? nullptr : &m;
+}
+
+// FUN_001075a0 Lust view, per task before the scene submit: types 0..2 (model **(chr+0x2c)) and items (type 3,
+// *(chr+0x2c)) whose model is loaded (+0x2c bit 31) and has children, not the first-person player, nearer to the eye
+// than far + 100 get an igTransform child 1 (the task's axes chr+0x20 +0x18..+0x38 with |up.y|, the model's world
+// position) holding the C29A root; the group's child mask moves bit 0 to bit 1, so C29A is drawn in place of the
+// actor's own node (a hidden actor stays hidden). Undone after the submit.
+bool lustSwap(const GameRuntime& r, const present::DrawChr& d, const alchemy::Mat4& camM, alchemy::Mat4* out) {
+    const Chr& c = *d.c;
+    if (c.type > kChrItem || c.obj != nullptr) return false;
+    if (!c.model.loaded() || c.model.parts.empty() || !c.model.parts[0].visible) return false;
+    if (&c == characters().player() && playerCtl() != nullptr && (playerCtl()->flags & 0x20u) != 0 && !eventActive()) {
+        float f[3], rt[3];
+        if (!talkCameraAxes(f, rt)) return false;   // bVar6: 0x50b620 & 0x20, no event, (0x53c6e8 == 0 || 0x53c720 == 0)
+    }
+    const alchemy::Mat4& a = d.state.actor;
+    const float dx = a.m[12] - camM.m[12], dy = a.m[13] - camM.m[13], dz = a.m[14] - camM.m[14];
+    if (!(std::sqrt(dz * dz + dx * dx + dy * dy) < r.proj.farZ + 100.0f)) return false;   // fRam004e66d4 + 100
+    alchemy::Mat4 w = a;
+    for (int row = 0; row < 3; ++row) {   // the task's unit axes (the actor matrix carries the scale)
+        float* v = &w.m[size_t(row * 4)];
+        const float l = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        if (l > 0.0f) { v[0] /= l; v[1] /= l; v[2] /= l; }
+    }
+    if (w.m[5] < 0.0f) w.m[5] = -w.m[5];
+    *out = w;
+    return true;
 }
 
 // PORT: the presenter's frame clock for the igTransform inputs (alchemy::setSceneTimeSource) while the presentation
@@ -1359,6 +1418,7 @@ public:
         sound().stopAll();
         playerStateReset();                         // state-machine reset + FUN_00143bc0 of FUN_0011bad0
         characters().removeAllButPlayer();          // FUN_0012bfd0(0x50b130)
+        gameAdapter().floorExit();                  // PORT: destroyed items of this floor may be released (issue #2)
         floorTagFloorExit(characters().player() ? characters().player()->id : 0u);   // FUN_0012bfd0 table loop
         stageClearAll();                            // FUN_00179fe0
         emittersStop(r);                            // FUN_0011f6c0 emitter handles (stopped before the kill-all)
@@ -1714,9 +1774,13 @@ bool gameRender3D(int screenW, int screenH, float alpha) {
     rlEnableDepthTest();
     // host clear (+0x29c(0x4e7914)) and fog attr colour := renderer +0x34..+0x40 (FUN_001075a0)
     auto c8 = [](float v) { return static_cast<unsigned char>(v * 255.0f + 0.5f); };
-    rlClearColor(c8(r.clearColor[0]), c8(r.clearColor[1]), c8(r.clearColor[2]), c8(r.clearColor[3]));
+    // Lust view: renderer fog attr colour and host clear colour (0.5, 0.125, 0.5, 1) for the pass, restored after it
+    static const float kLustColor[4] = {0.5f, 0.125f, 0.5f, 1.0f};
+    const float* clear = r.lustVisual ? kLustColor : r.clearColor;
+    rlClearColor(c8(clear[0]), c8(clear[1]), c8(clear[2]), c8(clear[3]));
     rlClearScreenBuffers();
-    r.renderer.setFog(true, r.clearColor, r.fogNear, r.fogFar);
+    r.renderer.setFog(true, clear, r.fogNear, r.fogFar);
+    const ChrModel* lust = r.lustVisual ? lustModel() : nullptr;
     r.renderer.begin(view, proj);
     const Chr* cutPlayer = updateSeeThrough(r, camM, view, proj, havePlayer && !evCam, plPos, draws, screenW, screenH);
     r.renderer.begin(view, proj);   // PORT: rebind after the silhouette mask pass
@@ -1725,6 +1789,13 @@ bool gameRender3D(int screenW, int screenH, float alpha) {
         for (const present::DrawChr& d : draws) {
             r.renderer.setCutAllowed(d.c != cutPlayer);   // PORT: the player is never dithered
             r.renderer.setCutUniform(seeThroughChr(d.c));
+            alchemy::Mat4 lw;
+            if (lust != nullptr && lustSwap(r, d, camM, &lw)) {
+                modelBeginDraw(d.c->model, r.renderer);
+                modelSubmitPart(*lust, lust->parts[0], lw, r.renderer, pass);
+                modelEndDraw(r.renderer);
+                continue;
+            }
             chrDrawAt(*d.c, d.state, r.renderer, pass);
         }
     }
@@ -1741,6 +1812,7 @@ bool gameRender3D(int screenW, int screenH, float alpha) {
     // UNVERIFIED: Alchemy's render-list order; drawn after the scene's blended geometry (the node blends).
     // FUN_0011ed90 (worldHidden) only clears the floor group (renderer +0x24) flags; the receiver group stays.
     post::shadowPass().drawReceivers(view, proj);
+    playerAimArcDraw(view, proj);   // FUN_00104ff0 + FUN_00105030: 3-D sprite layer 0x4e6a00 (throw-trajectory sprite)
     // FUN_00101bd0 2-D passes in order (RUNTIME.md 4.2): b/c sprite layers (not in this path), e FUN_0010ede0
     // distance blur (uses the scene depth), f markers, g FUN_001120b0 EXI, h dialogs, i FUN_0010e0c0 bloom,
     // j FUN_00178280 transition, k FUN_0010fb90 film grain, then the UI layers (renderer2d in present()).
